@@ -1,123 +1,148 @@
 #!/usr/bin/env bash
 set -e
 
-echo "======================================"
-echo " Omniverse Hosted Runtime Setup"
-echo "======================================"
+WORKSPACE="/content/Omniverse"
+REPO="https://github.com/sc35w/Omniverse.git"
+
+echo "=========================================="
+echo " Omniverse Runtime Setup"
+echo "=========================================="
 
 # --------------------------------------------------
-# 1. Basic configuration
+# 1. GPU
 # --------------------------------------------------
 
-export DEBIAN_FRONTEND=noninteractive
+echo "[1/7] GPU"
+nvidia-smi --query-gpu=name,memory.total,driver_version \
+    --format=csv,noheader
 
-ISAACSIM_ROOT="/usr/local/lib/python3.12/dist-packages/isaacsim"
-ROS_HUMBLE_ROOT="/usr/local/lib/python3.12/dist-packages/isaacsim/exts/isaacsim.ros2.core/humble"
-
-echo "[1/9] Checking GPU..."
-nvidia-smi
 
 # --------------------------------------------------
-# 2. Clone/update project
+# 2. ROS 2 Humble
 # --------------------------------------------------
 
-echo "[2/9] Getting Omniverse repository..."
+echo "[2/7] ROS 2"
 
-if [ ! -d /content/Omniverse/.git ]; then
-    git clone https://github.com/sc35w/Omniverse.git /content/Omniverse
+if [ -f /opt/ros/humble/setup.bash ]; then
+
+    echo "ROS 2 Humble: already installed"
+
 else
-    cd /content/Omniverse
-    git pull --ff-only
-fi
 
-# --------------------------------------------------
-# 3. Isaac Sim
-# --------------------------------------------------
+    echo "ROS 2 Humble: installing..."
 
-echo "[3/9] Checking Isaac Sim..."
+    apt-get update -qq
 
-if python3 -c "import isaacsim" >/dev/null 2>&1; then
-    echo "Isaac Sim already installed."
-else
-    python3 -m pip install \
-        "isaacsim[all,extscache]==6.0.1.0" \
-        --extra-index-url https://pypi.nvidia.com
-fi
-
-# --------------------------------------------------
-# 4. ROS 2 repository
-# --------------------------------------------------
-
-echo "[4/9] Checking ROS 2..."
-
-if [ ! -f /opt/ros/humble/setup.bash ]; then
-
-    apt-get update
-
-    apt-get install -y \
+    apt-get install -y -qq \
         curl \
         gnupg2 \
-        software-properties-common
+        lsb-release \
+        software-properties-common \
+        git \
+        build-essential \
+        cmake \
+        python3-pip \
+        python3-rosdep
 
     curl -fsSL \
         https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
         -o /usr/share/keyrings/ros-archive-keyring.gpg
 
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu jammy main" \
+    echo "deb [arch=$(dpkg --print-architecture) \
+signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] \
+http://packages.ros.org/ros2/ubuntu \
+$(. /etc/os-release && echo "$UBUNTU_CODENAME") main" \
         > /etc/apt/sources.list.d/ros2.list
 
-    apt-get update
+    apt-get update -qq
 
-    apt-get install -y \
+    apt-get install -y -qq \
         ros-humble-ros-base \
-        ros-humble-ament-cmake \
-        ros-humble-ament-lint-auto \
-        ros-humble-rosidl-default-generators \
-        ros-humble-rosidl-default-runtime \
         ros-humble-rclcpp \
         ros-humble-rclpy \
-        ros-humble-geometry-msgs \
-        ros-humble-nav-msgs \
-        ros-humble-sensor-msgs \
         ros-humble-std-msgs \
+        ros-humble-geometry-msgs \
+        ros-humble-sensor-msgs \
+        ros-humble-nav-msgs \
         ros-humble-tf2 \
         ros-humble-tf2-ros \
-        ros-humble-tf2-msgs \
         ros-humble-tf2-geometry-msgs \
-        ros-humble-diagnostic-msgs \
-        ros-humble-eigen3-cmake-module \
-        libeigen3-dev
-else
-    echo "ROS 2 Humble already installed."
+        ros-humble-robot-state-publisher \
+        ros-humble-xacro \
+        ros-humble-ros2-control \
+        ros-humble-ros2-controllers \
+        ros-humble-controller-manager \
+        python3-colcon-common-extensions
+
 fi
 
+source /opt/ros/humble/setup.bash
+
+echo "ROS_DISTRO=$ROS_DISTRO"
+echo "ros2=$(which ros2)"
+echo "colcon=$(which colcon)"
+
+
 # --------------------------------------------------
-# 5. colcon
+# 3. Isaac Sim
 # --------------------------------------------------
 
-echo "[5/9] Checking colcon..."
+echo "[3/7] Isaac Sim"
 
-if ! command -v colcon >/dev/null 2>&1; then
-    python3 -m pip install -U colcon-common-extensions
+if python3 -c "import isaacsim" >/dev/null 2>&1; then
+
+    echo "Isaac Sim: already installed"
+
 else
-    echo "colcon already installed."
+
+    echo "Isaac Sim: installing..."
+
+    python3 -m pip install \
+        "isaacsim[all,extscache]==6.0.1.0" \
+        --extra-index-url https://pypi.nvidia.com
+
 fi
 
-# --------------------------------------------------
-# 6. Empy compatibility
-# --------------------------------------------------
-
-echo "[6/9] Fixing Empy compatibility..."
-
-python3 -m pip install --force-reinstall "empy==3.3.4"
 
 # --------------------------------------------------
-# 7. OSQP
+# 4. Empy
 # --------------------------------------------------
 
-echo "[7/9] Checking OSQP..."
+echo "[4/7] Empy"
 
-if [ ! -f /usr/local/lib/libosqp.so ]; then
+if /usr/bin/python3 -c \
+    "import em; assert hasattr(em,'BUFFERED_OPT')" \
+    >/dev/null 2>&1; then
+
+    echo "Empy: OK"
+
+else
+
+    echo "Installing compatible Empy..."
+
+    python3 -m pip install \
+        "empy==3.3.4" \
+        --ignore-installed
+
+fi
+
+
+# --------------------------------------------------
+# 5. OSQP
+# --------------------------------------------------
+
+echo "[5/7] OSQP"
+
+if find /usr/local/lib /usr/lib/x86_64-linux-gnu \
+    -maxdepth 1 \
+    -name "libosqp.so*" \
+    2>/dev/null | grep -q .; then
+
+    echo "Native OSQP: already installed"
+
+else
+
+    echo "Native OSQP: building..."
 
     cd /tmp
 
@@ -128,59 +153,86 @@ if [ ! -f /usr/local/lib/libosqp.so ]; then
 
     cd osqp
 
-    mkdir build
-    cd build
-
     cmake \
+        -S . \
+        -B build \
         -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/usr/local \
-        ..
+        -DCMAKE_INSTALL_PREFIX=/usr/local
 
-    cmake --build . -j2
+    cmake --build build -j"$(nproc)"
 
-    cmake --install .
+    cmake --install build
 
     ldconfig
 
-else
-    echo "OSQP already installed."
 fi
 
+export LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH:-}"
+
+
 # --------------------------------------------------
-# 8. ROS environment
+# 6. Omniverse repository
 # --------------------------------------------------
 
-echo "[8/9] Configuring ROS environment..."
+echo "[6/7] Omniverse repository"
+
+if [ -d "$WORKSPACE/.git" ]; then
+
+    echo "Repository: already present"
+
+else
+
+    echo "Cloning repository..."
+
+    git clone "$REPO" "$WORKSPACE"
+
+fi
+
+cd "$WORKSPACE"
+
+echo "Commit:"
+git log -1 --oneline
+
+
+# --------------------------------------------------
+# 7. Build
+# --------------------------------------------------
+
+echo "[7/7] ROS workspace"
 
 source /opt/ros/humble/setup.bash
 
-export ROS_DISTRO=humble
+cd "$WORKSPACE"
 
-# Isaac Sim bundled Humble rclpy
-export PYTHONPATH="${ROS_HUMBLE_ROOT}/rclpy:${PYTHONPATH}"
+# Only build if install/setup.bash doesn't exist.
+if [ -f install/setup.bash ]; then
 
-export LD_LIBRARY_PATH="${ROS_HUMBLE_ROOT}/lib:/usr/local/lib:${LD_LIBRARY_PATH}"
+    echo "Workspace already built."
+    echo "Running incremental build..."
 
-# --------------------------------------------------
-# 9. Build workspace
-# --------------------------------------------------
+else
 
-echo "[9/9] Building Omniverse workspace..."
+    echo "First build..."
 
-cd /content/Omniverse
+fi
+
+export LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH:-}"
 
 colcon build --symlink-install
 
-echo ""
-echo "======================================"
-echo " SETUP COMPLETE"
-echo "======================================"
+source install/setup.bash
 
-echo "ROS_DISTRO: $ROS_DISTRO"
-echo "ROS 2:      $(which ros2)"
-echo "colcon:     $(which colcon)"
-echo "Workspace:  /content/Omniverse"
 
-echo ""
+echo
+echo "=========================================="
+echo " READY"
+echo "=========================================="
+
+echo "ROS_DISTRO=$ROS_DISTRO"
+echo "ROS2=$(which ros2)"
+echo "COLCON=$(which colcon)"
+echo "WORKSPACE=$WORKSPACE"
+
+echo
 echo "Packages:"
 colcon list
