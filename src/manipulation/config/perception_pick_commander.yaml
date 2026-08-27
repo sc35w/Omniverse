@@ -1,0 +1,32 @@
+perception_pick_commander_node:
+  ros__parameters:
+    use_sim_time: true
+
+    # Generic input. Any detector can publish PoseStamped here:
+    # red threshold now, YOLO + depth later.
+    pick_pose_topic: /perception/pick_pose
+    pick_place_node_name: /pick_place_node
+
+    # Candidate pose is written into pick_place_node before running the steps.
+    pose_param_names:
+      - pre_pick_pose
+      - pick_pose
+
+    # Perception is only used to update pre_pick_pose/pick_pose.
+    # The remaining lift/place/home poses stay in pick_place_sequence.yaml.
+    sequence_steps:
+      - open_gripper
+      - go_pick
+      - close_gripper
+      - go_lift
+      - go_place
+      - open_gripper
+      - go_home
+
+    # Keep the existing tuned lift_pose unless this is set true.
+    update_lift_pose: false
+    lift_z: 0.50
+
+    max_pose_age_sec: 2.0
+    service_timeout_sec: 5.0
+    step_timeout_sec: 30.0

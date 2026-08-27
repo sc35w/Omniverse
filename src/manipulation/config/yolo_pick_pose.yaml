@@ -1,0 +1,29 @@
+yolo_pick_pose_node:
+  ros__parameters:
+    use_sim_time: true
+
+    detections_topic: /detection/objects
+    depth_topic: /station_camera/depth
+    camera_info_topic: /station_camera/camera_info
+
+    planning_frame: world
+    camera_frame_fallback: station_camera_rgb
+    use_latest_tf: true
+
+    # Empty means accept any YOLO class. For COCO models, common useful values
+    # in this scene could be "cup" or "bottle" depending on the object.
+    target_class: ""
+    min_confidence: 0.5
+    selection_strategy: highest_confidence
+
+    min_depth: 0.05
+    max_depth: 5.0
+    bbox_shrink_ratio: 0.10
+    bbox_sample_stride: 2
+    foreground_percentile: 25.0
+    foreground_band_margin: 0.20
+    min_valid_points: 20
+    min_selected_points: 10
+
+    grasp_offset_xyz: [0.0, 0.0, 0.117]
+    pick_orientation_xyzw: [1.0, 0.0, 0.0, 0.0]

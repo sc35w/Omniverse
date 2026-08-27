@@ -1,0 +1,40 @@
+red_cube_detector_node:
+  ros__parameters:
+    use_sim_time: true
+
+    rgb_topic: /station_camera/image_raw
+    depth_topic: /station_camera/depth
+    camera_info_topic: /station_camera/camera_info
+
+    # Isaac camera images vary with lighting; tune these live if the cube is missed.
+    min_red: 90
+    red_margin: 35
+    min_area_px: 20
+    depth_window_px: 5
+    max_depth_m: 5.0
+    publish_period_sec: 0.20
+
+    # Single-reference calibration from the current red cube observation to the
+    # successful W7 pick pose. This is enough to validate the automatic pose
+    # handoff before replacing it with a proper camera->panda TF.
+    planning_frame: world
+
+    # W7 kept transform_mode=manual to validate the end-to-end pipeline with a
+    # single-reference offset. W8 should switch this to "tf" after publishing a
+    # correct camera optical frame -> planning_frame transform.
+    #
+    # manual: use camera_to_panda_translation/quaternion below.
+    # tf:     use ROS TF lookup planning_frame <- camera_frame.
+    transform_mode: manual
+    camera_frame_fallback: station_camera_rgb
+    use_latest_tf: true
+    enable_manual_panda_transform: true
+    # camera_to_panda_translation: [0.327, -0.222, -1.726]
+    camera_to_panda_translation: [0.35, -0.256, -1.726]
+    camera_to_panda_quaternion: [0.0, 0.0, 0.0, 1.0]
+
+    # Current successful W7 grasp target is roughly the camera-derived point
+    # after the above calibration plus this z offset.
+    grasp_offset_xyz: [0.0, 0.0, 0.117] # 빨간 블록의 경우
+    # grasp_offset_xyz: [0.0, 0.0, 0.35]
+    pick_orientation_xyzw: [1.0, 0.0, 0.0, 0.0]

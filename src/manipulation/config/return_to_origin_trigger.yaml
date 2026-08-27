@@ -1,0 +1,21 @@
+return_to_origin_trigger_node:
+  ros__parameters:
+    use_sim_time: true
+
+    commander_status_topic: /perception_pick_commander_node/status
+    done_status: DONE
+
+    # path_planner_node subscribes to /goal_pose and replans immediately.
+    goal_topic: /goal_pose
+    return_frame: map
+
+    # W8 default origin. Adjust if your map origin/start pose is different.
+    return_x: 0.0
+    return_y: 0.0
+    return_yaw: 0.0
+
+    # Let the cube settle on the tray before Carter starts moving.
+    settle_sec: 1.0
+    publish_repeat_count: 5
+    publish_period_sec: 0.2
+    auto_enable: true

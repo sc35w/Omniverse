@@ -1,0 +1,14 @@
+yolo_detector_node:
+  ros__parameters:
+    image_topic: "/camera/image_raw"
+    output_image_topic: "/detection/image"
+    output_objects_topic: "/detection/objects"
+
+    model_path: "yolov8m.pt"
+
+    confidence_threshold: 0.6
+    iou_threshold: 0.45
+    image_size: 640
+
+    device: "0"
+    max_fps: 10.0

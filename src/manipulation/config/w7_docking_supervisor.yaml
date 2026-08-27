@@ -1,0 +1,11 @@
+w7_docking_supervisor_node:
+  ros__parameters:
+    use_sim_time: true
+    docking_x: 2.62
+    docking_y: -3.30
+    docking_yaw: 0.0
+    docking_pos_tolerance: 0.15
+    docking_yaw_tolerance_deg: 5.0
+    pick_place_start_service: /pick_place_node/start
+    cmd_vel_topic: /cmd_vel
+    status_topic: /w7_docking_supervisor_node/status

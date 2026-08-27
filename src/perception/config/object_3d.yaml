@@ -1,0 +1,26 @@
+object_3d_projector_node:
+  ros__parameters:
+    detections_topic: "/detection/objects"
+    depth_topic: "/camera/depth"
+    camera_info_topic: "/camera/camera_info"
+
+    output_camera_topic: "/detection/objects_3d"
+    output_base_topic: "/detection/objects_3d_base"
+
+    target_frame: "base_link"
+    camera_frame_fallback: "camera_rgb_optical_frame"
+    use_latest_tf: true
+
+    min_depth: 0.05 # [m]
+    max_depth: 20.0 # [m]
+
+    center_roi_radius: 3 # 픽셀 단위
+    bbox_sample_stride: 2
+    foreground_percentile: 25.0
+    foreground_band_margin: 0.35
+    bbox_shrink_ratio: 0.0
+
+    min_valid_points: 20
+    min_selected_points: 10
+
+    log_period: 1.0 # [sec]

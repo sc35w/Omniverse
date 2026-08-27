@@ -1,0 +1,43 @@
+pick_place_node:
+  ros__parameters:
+    use_sim_time: true
+
+    move_group_action: /move_action
+    joint_command_topic: /franka/joint_command
+    auto_start: false
+
+    group_name: panda_arm
+    end_effector_link: panda_hand
+    planning_frame: world
+    pipeline_id: ompl
+    planner_id: ""
+    num_planning_attempts: 5
+    allowed_planning_time: 5.0
+    velocity_scaling: 0.40
+    acceleration_scaling: 0.40
+    position_tolerance: 0.005
+    orientation_tolerance: 0.02
+
+    workspace_min: [-2.0, -2.0, -0.2]
+    workspace_max: [5.0, 2.0, 2.5]
+
+    gripper_joint_names:
+      - panda_finger_joint1
+      - panda_finger_joint2
+    gripper_open_positions: [0.04, 0.04]
+    gripper_closed_positions: [0.0, 0.0]
+    gripper_command_repeat_count: 5
+    gripper_command_period_sec: 0.10
+    gripper_settle_sec: 1.00
+
+    # Pose format: [x, y, z, qx, qy, qz, qw] in planning_frame.
+    # W7 tuned baseline: fixed cargo pick pose and Carter tray place pose.
+    # Cargo uses high_friction_material: dynamic friction 1.5, static friction 2.0.
+    pre_pick_pose: [0.635, 0.00, 0.152, 1.0, 0.0, 0.0, 0.0]
+    pick_pose: [0.635, 0.00, 0.152, 1.0, 0.0, 0.0, 0.0]
+    lift_pose: [0.45, 0.00, 0.55, 1.0, 0.0, 0.0, 0.0]
+    pre_place_pose: [0.35, 0.55, 0.55, 1.0, 0.0, 0.0, 0.0]
+    place_pose: [0.3, 0.6, 0.4, 1.0, 0.0, 0.0, 0.0]
+    home_pose: [0.45, 0.00, 0.55, 1.0, 0.0, 0.0, 0.0]
+    execute_home_at_start: false
+    execute_home_at_end: true

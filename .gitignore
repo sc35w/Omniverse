@@ -1,0 +1,37 @@
+# ROS2 / Colcon 관련
+build/
+install/
+log/
+bags/
+maps/
+*.data
+*.posegraph
+*.cfg
+
+# Python 관련
+__pycache__/
+*.pyc
+
+# C++ / C# 관련
+bin/
+obj/
+*.exe
+*.vscode
+
+# OS 관련
+.DS_Store
+Thumbs.db
+*.zip
+
+*.gv
+*.pdf
+*.pgm
+
+*.csv
+tsan*
+*.jpg
+logs/
+*.svg
+
+# YOLO 관련
+*.pt

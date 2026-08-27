@@ -1,0 +1,18 @@
+follow_joint_trajectory_to_joint_state_server:
+  ros__parameters:
+    use_sim_time: true
+
+    action_name: /panda_arm_controller/follow_joint_trajectory
+    joint_command_topic: /franka/joint_command
+    publish_rate_hz: 50.0
+    goal_tolerance_rad: 0.08
+    hold_final_point: true
+
+    arm_joint_names:
+      - panda_joint1
+      - panda_joint2
+      - panda_joint3
+      - panda_joint4
+      - panda_joint5
+      - panda_joint6
+      - panda_joint7
