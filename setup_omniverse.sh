@@ -3,17 +3,29 @@ set -e
 
 # ============================================================
 # FAST OMNIVERSE / ISAAC SIM / ROS 2 HUMBLE SETUP
-# Ubuntu 22.04
-# Isaac Sim 6.0.1
-# ROS 2 Humble
 #
-# Designed for temporary Google Colab runtimes.
-# Skips anything already installed.
-# Does NOT delete existing workspace builds.
+# Target:
+#   Ubuntu 22.04
+#   NVIDIA GPU
+#   Isaac Sim 6.0.1
+#   ROS 2 Humble
+#   /content/Omniverse
+#
+# Design:
+#   - Skip already-installed components
+#   - Minimal ROS installation
+#   - No desktop/full ROS installation
+#   - No unnecessary workspace cleanup
+#   - Incremental colcon build
+#   - Build OSQP only when libosqp.so is missing
 # ============================================================
+
+set -u
 
 WORKSPACE="/content/Omniverse"
 REPO="https://github.com/sc35w/Omniverse.git"
+
+export DEBIAN_FRONTEND=noninteractive
 
 echo
 echo "============================================================"
@@ -29,8 +41,16 @@ echo
 echo "[1/7] GPU"
 echo "------------------------------------------------------------"
 
-nvidia-smi --query-gpu=name,memory.total,driver_version \
-    --format=csv,noheader
+if command -v nvidia-smi >/dev/null 2>&1; then
+
+    nvidia-smi --query-gpu=name,memory.total,driver_version \
+        --format=csv,noheader
+
+else
+
+    echo "WARNING: nvidia-smi not found."
+
+fi
 
 
 # ============================================================
@@ -49,20 +69,36 @@ else
 
     echo "ROS 2 Humble not found -> installing minimal ROS..."
 
+    # --------------------------------------------------------
+    # Basic Ubuntu tools
+    # --------------------------------------------------------
+
     apt-get update -qq
 
     apt-get install -y -qq \
         curl \
         gnupg2 \
         lsb-release \
+        software-properties-common \
         git \
         build-essential \
         cmake \
         python3-pip \
-        python3-rosdep \
         >/dev/null
 
-    # ROS repository
+
+    # --------------------------------------------------------
+    # Enable Universe
+    # --------------------------------------------------------
+
+    add-apt-repository universe -y \
+        >/dev/null 2>&1 || true
+
+
+    # --------------------------------------------------------
+    # ROS key
+    # --------------------------------------------------------
+
     if [ ! -f /usr/share/keyrings/ros-archive-keyring.gpg ]; then
 
         curl -fsSL \
@@ -71,25 +107,58 @@ else
 
     fi
 
+
+    # --------------------------------------------------------
+    # ROS repository
+    # --------------------------------------------------------
+
     echo "deb [arch=$(dpkg --print-architecture) \
 signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] \
 http://packages.ros.org/ros2/ubuntu \
 $(. /etc/os-release && echo "$UBUNTU_CODENAME") main" \
         > /etc/apt/sources.list.d/ros2.list
 
+
     apt-get update -qq
 
-    # Minimal ROS installation.
-    # Additional dependencies are resolved by rosdep later.
+
+    # --------------------------------------------------------
+    # Minimal ROS 2
+    # --------------------------------------------------------
+
     apt-get install -y -qq \
         ros-humble-ros-base \
-        python3-colcon-common-extensions \
         >/dev/null
+
+
+    # --------------------------------------------------------
+    # Colcon
+    # --------------------------------------------------------
+
+    if ! command -v colcon >/dev/null 2>&1; then
+
+        echo "Installing colcon..."
+
+        apt-get install -y -qq \
+            python3-colcon-common-extensions \
+            >/dev/null
+
+    else
+
+        echo "colcon already installed -> SKIP"
+
+    fi
 
 fi
 
+
+# ------------------------------------------------------------
+# Source ROS
+# ------------------------------------------------------------
+
 source /opt/ros/humble/setup.bash
 
+echo
 echo "ROS_DISTRO=$ROS_DISTRO"
 echo "ROS_VERSION=$ROS_VERSION"
 echo "ROS2=$(which ros2)"
@@ -97,12 +166,56 @@ echo "COLCON=$(which colcon)"
 
 
 # ============================================================
-# 3. ISAAC SIM
+# 3. ROS BUILD DEPENDENCY TOOLS
 # ============================================================
 
 echo
-echo "[3/7] Isaac Sim 6.0.1"
+echo "[3/7] ROS dependency tools"
 echo "------------------------------------------------------------"
+
+
+# rosdep is only needed when resolving workspace dependencies.
+
+if command -v rosdep >/dev/null 2>&1; then
+
+    echo "rosdep already installed -> SKIP"
+
+else
+
+    echo "Installing rosdep..."
+
+    # Make sure Universe is enabled before trying this package.
+    add-apt-repository universe -y \
+        >/dev/null 2>&1 || true
+
+    apt-get update -qq
+
+    apt-get install -y -qq \
+        python3-rosdep \
+        >/dev/null
+
+fi
+
+
+# Initialize rosdep if necessary.
+
+if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then
+
+    echo "Initializing rosdep..."
+
+    rosdep init 2>/dev/null || true
+
+fi
+
+
+# ============================================================
+# 4. ISAAC SIM
+# ============================================================
+
+echo
+echo "[4/7] Isaac Sim 6.0.1"
+echo "------------------------------------------------------------"
+
 
 if python3 -c "import isaacsim" >/dev/null 2>&1; then
 
@@ -110,7 +223,7 @@ if python3 -c "import isaacsim" >/dev/null 2>&1; then
 
 else
 
-    echo "Isaac Sim not found -> installing..."
+    echo "Isaac Sim not found -> installing 6.0.1..."
 
     python3 -m pip install \
         "isaacsim[all,extscache]==6.0.1.0" \
@@ -121,15 +234,16 @@ fi
 
 
 # ============================================================
-# 4. EMPY
+# 5. EMPY
 # ============================================================
 
 echo
-echo "[4/7] Empy / ROS interface generator"
+echo "[5/7] Empy / ROS interface generation"
 echo "------------------------------------------------------------"
 
-# ROS 2 Humble rosidl_adapter requires the old Empy API.
-# Check the Python interpreter actually used by ROS.
+
+# ROS 2 Humble rosidl_adapter needs the Empy API containing
+# BUFFERED_OPT.
 
 if /usr/bin/python3 -c \
     "import em; assert hasattr(em,'BUFFERED_OPT')" \
@@ -139,11 +253,9 @@ if /usr/bin/python3 -c \
 
 else
 
-    echo "Compatible Empy not found."
+    echo "Compatible Empy not detected."
 
-    # Try Ubuntu's ROS-compatible package first.
-    apt-get update -qq
-
+    # Try Ubuntu package first.
     apt-get install -y -qq \
         python3-empy \
         >/dev/null
@@ -151,22 +263,23 @@ else
 fi
 
 
-# Verify
-
+echo
 /usr/bin/python3 -c "
 import em
-print('Empy:', getattr(em,'__version__','unknown'))
+print('Empy version:', getattr(em,'__version__','unknown'))
+print('Empy module :', em.__file__)
 print('BUFFERED_OPT:', hasattr(em,'BUFFERED_OPT'))
 "
 
 
 # ============================================================
-# 5. NATIVE OSQP
+# 6. NATIVE OSQP
 # ============================================================
 
 echo
-echo "[5/7] Native OSQP"
+echo "[6/7] Native OSQP"
 echo "------------------------------------------------------------"
+
 
 export LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH:-}"
 
@@ -189,6 +302,7 @@ else
 
     cd /tmp
 
+
     if [ ! -d /tmp/osqp ]; then
 
         git clone \
@@ -201,7 +315,9 @@ else
 
     fi
 
+
     cd /tmp/osqp
+
 
     cmake \
         -S . \
@@ -209,19 +325,24 @@ else
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr/local
 
+
     cmake \
         --build build \
         -j2
 
+
     cmake \
         --install build
+
 
     ldconfig
 
 fi
 
 
-echo "OSQP:"
+echo
+echo "OSQP library:"
+
 find \
     /usr/local/lib \
     /usr/lib \
@@ -232,16 +353,21 @@ find \
 
 
 # ============================================================
-# 6. OMNIVERSE REPOSITORY
+# 7. OMNIVERSE WORKSPACE
 # ============================================================
 
 echo
-echo "[6/7] Omniverse repository"
+echo "[7/7] Omniverse workspace"
 echo "------------------------------------------------------------"
+
+
+# ------------------------------------------------------------
+# Clone only if missing
+# ------------------------------------------------------------
 
 if [ -d "$WORKSPACE/.git" ]; then
 
-    echo "Omniverse repository already exists -> SKIP clone"
+    echo "Repository already exists -> SKIP clone"
 
 else
 
@@ -257,22 +383,22 @@ fi
 
 cd "$WORKSPACE"
 
+
+echo
+echo "Repository:"
+echo "$WORKSPACE"
+
+
 echo
 echo "Current commit:"
 git log -1 --oneline
 
 
-# ============================================================
-# 7. BUILD
-# ============================================================
-
-echo
-echo "[7/7] ROS 2 workspace"
-echo "------------------------------------------------------------"
+# ------------------------------------------------------------
+# ROS environment
+# ------------------------------------------------------------
 
 source /opt/ros/humble/setup.bash
-
-cd "$WORKSPACE"
 
 export LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH:-}"
 
@@ -281,13 +407,8 @@ export LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH:-}"
 # rosdep
 # ------------------------------------------------------------
 
-if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then
-
-    echo "Initializing rosdep..."
-
-    rosdep init 2>/dev/null || true
-
-fi
+echo
+echo "Updating rosdep..."
 
 rosdep update \
     --rosdistro humble \
@@ -295,7 +416,7 @@ rosdep update \
 
 
 echo
-echo "Installing missing ROS dependencies..."
+echo "Checking ROS package dependencies..."
 
 rosdep install \
     --from-paths src \
@@ -321,12 +442,14 @@ colcon build \
 # ------------------------------------------------------------
 
 if [ -f install/setup.bash ]; then
+
     source install/setup.bash
+
 fi
 
 
 # ============================================================
-# FINAL
+# FINAL VERIFICATION
 # ============================================================
 
 echo
@@ -335,17 +458,13 @@ echo " OMNIVERSE READY"
 echo "============================================================"
 
 echo
-echo "ROS:"
-echo "  ROS_DISTRO = $ROS_DISTRO"
-echo "  ROS2       = $(which ros2)"
-echo "  COLCON     = $(which colcon)"
+echo "ROS_DISTRO = $ROS_DISTRO"
+echo "ROS2       = $(which ros2)"
+echo "COLCON     = $(which colcon)"
+echo "WORKSPACE  = $WORKSPACE"
 
 echo
-echo "Workspace:"
-echo "  $WORKSPACE"
-
-echo
-echo "Packages:"
+echo "ROS packages:"
 colcon list
 
 echo
