@@ -5,7 +5,7 @@ WORKSPACE="/content/Omniverse"
 REPO="https://github.com/sc35w/Omniverse.git"
 
 echo "=========================================="
-echo " Omniverse Runtime Setup"
+echo " FAST OMNIVERSE SETUP"
 echo "=========================================="
 
 # --------------------------------------------------
@@ -13,36 +13,34 @@ echo "=========================================="
 # --------------------------------------------------
 
 echo "[1/7] GPU"
-nvidia-smi --query-gpu=name,memory.total,driver_version \
-    --format=csv,noheader
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
 
 # --------------------------------------------------
-# 2. ROS 2 Humble
+# 2. ROS 2 Humble - MINIMAL
 # --------------------------------------------------
 
-echo "[2/7] ROS 2"
+echo "[2/7] ROS 2 Humble"
 
 if [ -f /opt/ros/humble/setup.bash ]; then
 
-    echo "ROS 2 Humble: already installed"
+    echo "ROS 2 already installed -> SKIP"
 
 else
 
-    echo "ROS 2 Humble: installing..."
+    echo "Installing minimal ROS 2 Humble..."
 
     apt-get update -qq
 
     apt-get install -y -qq \
         curl \
         gnupg2 \
-        lsb-release \
-        software-properties-common \
         git \
         build-essential \
         cmake \
         python3-pip \
-        python3-rosdep
+        python3-rosdep \
+        >/dev/null
 
     curl -fsSL \
         https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
@@ -56,31 +54,15 @@ $(. /etc/os-release && echo "$UBUNTU_CODENAME") main" \
 
     apt-get update -qq
 
+    # ONLY ROS base + build tools
     apt-get install -y -qq \
         ros-humble-ros-base \
-        ros-humble-rclcpp \
-        ros-humble-rclpy \
-        ros-humble-std-msgs \
-        ros-humble-geometry-msgs \
-        ros-humble-sensor-msgs \
-        ros-humble-nav-msgs \
-        ros-humble-tf2 \
-        ros-humble-tf2-ros \
-        ros-humble-tf2-geometry-msgs \
-        ros-humble-robot-state-publisher \
-        ros-humble-xacro \
-        ros-humble-ros2-control \
-        ros-humble-ros2-controllers \
-        ros-humble-controller-manager \
-        python3-colcon-common-extensions
+        python3-colcon-common-extensions \
+        >/dev/null
 
 fi
 
 source /opt/ros/humble/setup.bash
-
-echo "ROS_DISTRO=$ROS_DISTRO"
-echo "ros2=$(which ros2)"
-echo "colcon=$(which colcon)"
 
 
 # --------------------------------------------------
@@ -91,15 +73,16 @@ echo "[3/7] Isaac Sim"
 
 if python3 -c "import isaacsim" >/dev/null 2>&1; then
 
-    echo "Isaac Sim: already installed"
+    echo "Isaac Sim already installed -> SKIP"
 
 else
 
-    echo "Isaac Sim: installing..."
+    echo "Installing Isaac Sim 6.0.1..."
 
     python3 -m pip install \
         "isaacsim[all,extscache]==6.0.1.0" \
-        --extra-index-url https://pypi.nvidia.com
+        --extra-index-url https://pypi.nvidia.com \
+        --disable-pip-version-check
 
 fi
 
@@ -114,15 +97,16 @@ if /usr/bin/python3 -c \
     "import em; assert hasattr(em,'BUFFERED_OPT')" \
     >/dev/null 2>&1; then
 
-    echo "Empy: OK"
+    echo "Empy OK -> SKIP"
 
 else
 
-    echo "Installing compatible Empy..."
+    echo "Installing Empy 3.3.4..."
 
     python3 -m pip install \
         "empy==3.3.4" \
-        --ignore-installed
+        --ignore-installed \
+        --no-cache-dir
 
 fi
 
@@ -133,23 +117,22 @@ fi
 
 echo "[5/7] OSQP"
 
-if find /usr/local/lib /usr/lib/x86_64-linux-gnu \
-    -maxdepth 1 \
+if find /usr/local/lib /usr/lib \
     -name "libosqp.so*" \
     2>/dev/null | grep -q .; then
 
-    echo "Native OSQP: already installed"
+    echo "Native OSQP already installed -> SKIP"
 
 else
 
-    echo "Native OSQP: building..."
+    echo "Installing native OSQP..."
 
     cd /tmp
 
-    rm -rf osqp
-
-    git clone --depth 1 \
-        https://github.com/osqp/osqp.git
+    if [ ! -d osqp ]; then
+        git clone --depth 1 \
+            https://github.com/osqp/osqp.git
+    fi
 
     cd osqp
 
@@ -159,7 +142,7 @@ else
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr/local
 
-    cmake --build build -j"$(nproc)"
+    cmake --build build -j2
 
     cmake --install build
 
@@ -178,60 +161,62 @@ echo "[6/7] Omniverse repository"
 
 if [ -d "$WORKSPACE/.git" ]; then
 
-    echo "Repository: already present"
+    echo "Repository already exists -> SKIP"
 
 else
 
-    echo "Cloning repository..."
-
-    git clone "$REPO" "$WORKSPACE"
+    git clone \
+        --depth 1 \
+        "$REPO" \
+        "$WORKSPACE"
 
 fi
-
-cd "$WORKSPACE"
-
-echo "Commit:"
-git log -1 --oneline
 
 
 # --------------------------------------------------
 # 7. Build
 # --------------------------------------------------
 
-echo "[7/7] ROS workspace"
-
-source /opt/ros/humble/setup.bash
+echo "[7/7] Building workspace"
 
 cd "$WORKSPACE"
 
-# Only build if install/setup.bash doesn't exist.
-if [ -f install/setup.bash ]; then
-
-    echo "Workspace already built."
-    echo "Running incremental build..."
-
-else
-
-    echo "First build..."
-
-fi
+source /opt/ros/humble/setup.bash
 
 export LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH:-}"
 
+# Only resolve dependencies if needed
+if [ ! -d install ]; then
+
+    echo "First build..."
+
+    rosdep init 2>/dev/null || true
+    rosdep update --rosdistro humble 2>/dev/null || true
+
+    rosdep install \
+        --from-paths src \
+        --ignore-src \
+        --rosdistro humble \
+        -r -y
+
+else
+
+    echo "Existing build detected -> incremental build"
+
+fi
+
 colcon build --symlink-install
-
-source install/setup.bash
-
 
 echo
 echo "=========================================="
 echo " READY"
 echo "=========================================="
 
-echo "ROS_DISTRO=$ROS_DISTRO"
-echo "ROS2=$(which ros2)"
-echo "COLCON=$(which colcon)"
-echo "WORKSPACE=$WORKSPACE"
+echo "ROS:       $(which ros2)"
+echo "COLCON:    $(which colcon)"
+echo "Workspace: $WORKSPACE"
+
+source install/setup.bash
 
 echo
 echo "Packages:"
