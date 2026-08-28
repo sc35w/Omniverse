@@ -1,31 +1,26 @@
 #!/usr/bin/env bash
-set -e
 
 # ============================================================
 # FAST OMNIVERSE / ISAAC SIM / ROS 2 HUMBLE SETUP
+# Ubuntu 22.04 / Google Colab / NVIDIA GPU
 #
-# Target:
-#   Ubuntu 22.04
-#   NVIDIA GPU
-#   Isaac Sim 6.0.1
-#   ROS 2 Humble
-#   /content/Omniverse
-#
-# Design:
-#   - Skip already-installed components
-#   - Minimal ROS installation
-#   - No desktop/full ROS installation
-#   - No unnecessary workspace cleanup
+# Features:
+#   - Skips already-installed software
+#   - Minimal ROS 2 Humble
+#   - Isaac Sim 6.0.1
+#   - ROS-compatible Empy
+#   - Native OSQP only if missing
+#   - Does NOT delete build/install/log
 #   - Incremental colcon build
-#   - Build OSQP only when libosqp.so is missing
 # ============================================================
 
-set -u
+set -e
 
 WORKSPACE="/content/Omniverse"
 REPO="https://github.com/sc35w/Omniverse.git"
 
 export DEBIAN_FRONTEND=noninteractive
+
 
 echo
 echo "============================================================"
@@ -48,7 +43,7 @@ if command -v nvidia-smi >/dev/null 2>&1; then
 
 else
 
-    echo "WARNING: nvidia-smi not found."
+    echo "WARNING: NVIDIA GPU not detected"
 
 fi
 
@@ -69,10 +64,6 @@ else
 
     echo "ROS 2 Humble not found -> installing minimal ROS..."
 
-    # --------------------------------------------------------
-    # Basic Ubuntu tools
-    # --------------------------------------------------------
-
     apt-get update -qq
 
     apt-get install -y -qq \
@@ -87,18 +78,12 @@ else
         >/dev/null
 
 
-    # --------------------------------------------------------
     # Enable Universe
-    # --------------------------------------------------------
-
     add-apt-repository universe -y \
         >/dev/null 2>&1 || true
 
 
-    # --------------------------------------------------------
     # ROS key
-    # --------------------------------------------------------
-
     if [ ! -f /usr/share/keyrings/ros-archive-keyring.gpg ]; then
 
         curl -fsSL \
@@ -108,10 +93,7 @@ else
     fi
 
 
-    # --------------------------------------------------------
     # ROS repository
-    # --------------------------------------------------------
-
     echo "deb [arch=$(dpkg --print-architecture) \
 signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] \
 http://packages.ros.org/ros2/ubuntu \
@@ -122,59 +104,69 @@ $(. /etc/os-release && echo "$UBUNTU_CODENAME") main" \
     apt-get update -qq
 
 
-    # --------------------------------------------------------
-    # Minimal ROS 2
-    # --------------------------------------------------------
-
+    # Minimal ROS installation
     apt-get install -y -qq \
         ros-humble-ros-base \
         >/dev/null
-
-
-    # --------------------------------------------------------
-    # Colcon
-    # --------------------------------------------------------
-
-    if ! command -v colcon >/dev/null 2>&1; then
-
-        echo "Installing colcon..."
-
-        apt-get install -y -qq \
-            python3-colcon-common-extensions \
-            >/dev/null
-
-    else
-
-        echo "colcon already installed -> SKIP"
-
-    fi
 
 fi
 
 
 # ------------------------------------------------------------
-# Source ROS
+# IMPORTANT:
+# ROS setup.bash may reference unset variables.
+# Never source it while nounset is active.
 # ------------------------------------------------------------
 
+set +u
+
+export AMENT_TRACE_SETUP_FILES=""
+
 source /opt/ros/humble/setup.bash
+
+set -u
+
 
 echo
 echo "ROS_DISTRO=$ROS_DISTRO"
 echo "ROS_VERSION=$ROS_VERSION"
+
+
+# ------------------------------------------------------------
+# Colcon
+# ------------------------------------------------------------
+
+if command -v colcon >/dev/null 2>&1; then
+
+    echo "colcon already installed -> SKIP"
+
+else
+
+    echo "Installing colcon..."
+
+    set +u
+
+    apt-get install -y -qq \
+        python3-colcon-common-extensions \
+        >/dev/null
+
+    set -u
+
+fi
+
+
 echo "ROS2=$(which ros2)"
 echo "COLCON=$(which colcon)"
 
 
 # ============================================================
-# 3. ROS BUILD DEPENDENCY TOOLS
+# 3. ROSDEP
 # ============================================================
 
 echo
 echo "[3/7] ROS dependency tools"
 echo "------------------------------------------------------------"
 
-
-# rosdep is only needed when resolving workspace dependencies.
 
 if command -v rosdep >/dev/null 2>&1; then
 
@@ -183,10 +175,6 @@ if command -v rosdep >/dev/null 2>&1; then
 else
 
     echo "Installing rosdep..."
-
-    # Make sure Universe is enabled before trying this package.
-    add-apt-repository universe -y \
-        >/dev/null 2>&1 || true
 
     apt-get update -qq
 
@@ -197,7 +185,7 @@ else
 fi
 
 
-# Initialize rosdep if necessary.
+# Initialize rosdep if needed
 
 if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then
 
@@ -238,12 +226,11 @@ fi
 # ============================================================
 
 echo
-echo "[5/7] Empy / ROS interface generation"
+echo "[5/7] Empy"
 echo "------------------------------------------------------------"
 
 
-# ROS 2 Humble rosidl_adapter needs the Empy API containing
-# BUFFERED_OPT.
+# ROS Humble's rosidl_adapter needs BUFFERED_OPT.
 
 if /usr/bin/python3 -c \
     "import em; assert hasattr(em,'BUFFERED_OPT')" \
@@ -253,9 +240,10 @@ if /usr/bin/python3 -c \
 
 else
 
-    echo "Compatible Empy not detected."
+    echo "Installing ROS-compatible Empy..."
 
-    # Try Ubuntu package first.
+    apt-get update -qq
+
     apt-get install -y -qq \
         python3-empy \
         >/dev/null
@@ -263,13 +251,16 @@ else
 fi
 
 
-echo
+set +u
+
 /usr/bin/python3 -c "
 import em
-print('Empy version:', getattr(em,'__version__','unknown'))
 print('Empy module :', em.__file__)
+print('Empy version:', getattr(em,'__version__','unknown'))
 print('BUFFERED_OPT:', hasattr(em,'BUFFERED_OPT'))
 "
+
+set -u
 
 
 # ============================================================
@@ -340,6 +331,9 @@ else
 fi
 
 
+export LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH:-}"
+
+
 echo
 echo "OSQP library:"
 
@@ -362,7 +356,7 @@ echo "------------------------------------------------------------"
 
 
 # ------------------------------------------------------------
-# Clone only if missing
+# Clone repository only when missing
 # ------------------------------------------------------------
 
 if [ -d "$WORKSPACE/.git" ]; then
@@ -371,7 +365,7 @@ if [ -d "$WORKSPACE/.git" ]; then
 
 else
 
-    echo "Cloning Omniverse..."
+    echo "Cloning Omniverse repository..."
 
     git clone \
         --depth 1 \
@@ -385,7 +379,7 @@ cd "$WORKSPACE"
 
 
 echo
-echo "Repository:"
+echo "Workspace:"
 echo "$WORKSPACE"
 
 
@@ -398,7 +392,18 @@ git log -1 --oneline
 # ROS environment
 # ------------------------------------------------------------
 
+set +u
+
+export AMENT_TRACE_SETUP_FILES=""
+
 source /opt/ros/humble/setup.bash
+
+set -u
+
+
+# ------------------------------------------------------------
+# OSQP library
+# ------------------------------------------------------------
 
 export LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH:-}"
 
@@ -416,7 +421,7 @@ rosdep update \
 
 
 echo
-echo "Checking ROS package dependencies..."
+echo "Checking workspace dependencies..."
 
 rosdep install \
     --from-paths src \
@@ -443,7 +448,13 @@ colcon build \
 
 if [ -f install/setup.bash ]; then
 
+    set +u
+
+    export AMENT_TRACE_SETUP_FILES=""
+
     source install/setup.bash
+
+    set -u
 
 fi
 
