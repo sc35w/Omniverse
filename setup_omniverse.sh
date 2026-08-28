@@ -15,7 +15,7 @@
 set -e
 
 WORKSPACE="/content/Omniverse"
-REPO="https://github.com/sc35w/Omniverse.git""
+REPO="https://github.com/sc35w/Omniverse.git"
 ISAAC_VERSION="6.0.1.0"
 
 export DEBIAN_FRONTEND=noninteractive
